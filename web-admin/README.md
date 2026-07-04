@@ -91,6 +91,8 @@ Edit `config/default.json`, or create `config/local.json` (gitignored) to overri
 
 `PORT` and `HOST` environment variables also override these.
 
+`DUNE_SSH_KEY_PATH` can be set to override the SSH key file path used by the host scripts and web action backend.
+
 ## Firewall
 
 Only the **proxy's** public port (443) needs to be open at the perimeter. The Node app on `127.0.0.1:8477` is loopback-only and should **not** be exposed directly — no inbound firewall rule for 8477 is needed when the proxy is on the same host.
