@@ -2,7 +2,7 @@
 
 A small web app that lets you hand out accounts so trusted people can **start / stop / reset** the battlegroup and **monitor** its status from a browser — without giving them the host machine or the PowerShell menu.
 
-It reuses the exact same mechanism as `battlegroup-management/battlegroup.ps1`: it queries Hyper-V for the VM state/IP and runs `battlegroup <command>` over SSH using the key at `%LOCALAPPDATA%\DuneAwakeningServer\sshKey`.
+It reuses the exact same mechanism as `battlegroup-management/battlegroup.ps1`: it queries Hyper-V for the VM state/IP and runs `battlegroup <command>` over SSH using the SSH key created during initial setup.
 
 > **Scope:** Served over HTTPS at a public domain (e.g. `https://admin.example.com`) behind a **reverse proxy** that forwards to the Node app on `localhost:8477` — see [Running behind a reverse proxy](#running-behind-a-reverse-proxy). Exposed actions are battlegroup **start / stop / restart** plus **status & monitoring**. VM power on/off is intentionally *not* exposed here — see [VM must be running](#vm-must-be-running).
 
