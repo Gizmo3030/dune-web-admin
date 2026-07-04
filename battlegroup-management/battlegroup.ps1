@@ -11,7 +11,7 @@ Start-Transcript -Path $logFile -Append | Out-Null
 
 # Start
 $vmName = 'dune-awakening'
-$sshKey = "$env:LOCALAPPDATA\DuneAwakeningServer\sshKey"
+$sshKey = if ($env:DUNE_SSH_KEY_PATH) { $env:DUNE_SSH_KEY_PATH } else { "$env:LOCALAPPDATA\DuneAwakeningServer\sshKey" }
 $directorPort = $null
 
 $_vmBaseCommands = @(

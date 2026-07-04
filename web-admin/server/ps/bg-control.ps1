@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 # --- Constants (kept in sync with battlegroup-management/battlegroup.ps1) ---
-$sshKey            = "$env:LOCALAPPDATA\DuneAwakeningServer\sshKey"
+$sshKey            = if ($env:DUNE_SSH_KEY_PATH) { $env:DUNE_SSH_KEY_PATH } else { "$env:LOCALAPPDATA\DuneAwakeningServer\sshKey" }
 $fileBrowserPort   = 18888
 $directorSvcPort   = 11717
 $remoteBattlegroup = '/home/dune/.dune/bin/battlegroup'
