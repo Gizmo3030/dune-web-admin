@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard — Dune Awakening Admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="topbar" id="topbar"></div>
+
+  <div class="wrap">
+    <div class="banner" id="banner"></div>
+
+    <div class="card">
+      <h1>Battlegroup control</h1>
+      <p class="sub" id="pageSub">Start, stop or reset the battlegroup, and monitor its status.</p>
+
+      <div class="status-grid" id="statusGrid">
+        <div class="stat"><div class="label">VM</div><div class="value"><span class="pill idle">loading…</span></div></div>
+        <div class="stat"><div class="label">Battlegroup</div><div class="value"><span class="pill idle">loading…</span></div></div>
+        <div class="stat"><div class="label">IP address</div><div class="value" id="ipValue">—</div></div>
+      </div>
+
+      <h2 style="margin-top:22px;">Actions</h2>
+      <div class="actions" id="actionButtons">
+        <button class="primary" data-action="start">Start</button>
+        <button data-action="restart">Restart (reset)</button>
+        <button class="danger" data-action="stop">Stop</button>
+        <button id="refreshBtn">Refresh status</button>
+      </div>
+      <p class="muted" id="gateNote" style="margin-top:10px; display:none;"></p>
+    </div>
+
+    <div class="card">
+      <h2>Monitoring</h2>
+      <div class="link-row" id="monitorLinks">
+        <a class="btn link-btn disabled" id="directorLink" target="_blank" rel="noopener">Director dashboard</a>
+        <a class="btn link-btn disabled" id="fileBrowserLink" target="_blank" rel="noopener">File browser</a>
+      </div>
+      <div class="logbox" id="output" style="display:none;"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    const banner = document.getElementById('banner');
+    const output = document.getElementById('output');
+    let busy = false;
+
+    function flash(msg, kind) {
+      banner.className = 'banner show ' + (kind || 'info');
+      banner.textContent = msg;
+    }
+    function clearFlash() { banner.className = 'banner'; }
+
+    function pill(text, kind) { return `<span class="pill ${kind}">${DA.escapeHtml(text)}</span>`; }
+
+    function renderStatus(s) {
+      const vmKind = s.vmRunning ? 'ok' : (s.vmExists ? 'warn' : 'bad');
+      const vmText = s.vmExists ? s.vmState : 'not installed';
+
+      let bgKind = 'idle', bgText = 'unknown';
+      if (!s.vmRunning) { bgKind = 'idle'; bgText = 'VM offline'; }
+      else if (s.ok) { bgKind = 'ok'; bgText = 'reachable'; }
+      else { bgKind = 'bad'; bgText = 'unreachable'; }
+
+      document.getElementById('statusGrid').innerHTML = `
+        <div class="stat"><div class="label">VM</div><div class="value">${pill(vmText, vmKind)}</div></div>
+        <div class="stat"><div class="label">Battlegroup</div><div class="value">${pill(bgText, bgKind)}</div></div>
+        <div class="stat"><div class="label">IP address</div><div class="value">${s.ip ? DA.escapeHtml(s.ip) : '—'}</div></div>`;
+
+      // Monitoring links
+      const dl = document.getElementById('directorLink');
+      const fb = document.getElementById('fileBrowserLink');
+      if (s.directorUrl) { dl.href = s.directorUrl; dl.classList.remove('disabled'); dl.textContent = 'Director dashboard'; }
+      else { dl.removeAttribute('href'); dl.classList.add('disabled'); }
+      if (s.fileBrowserUrl) { fb.href = s.fileBrowserUrl; fb.classList.remove('disabled'); }
+      else { fb.removeAttribute('href'); fb.classList.add('disabled'); }
+
+      // Gate action buttons on VM running.
+      const canAct = !!s.vmRunning;
+      document.querySelectorAll('#actionButtons button[data-action]').forEach((b) => { b.disabled = !canAct || busy; });
+      const note = document.getElementById('gateNote');
+      if (!s.vmRunning) {
+        note.style.display = 'block';
+        note.textContent = s.reason || 'The VM is not running. Ask the host owner to start it before running battlegroup actions.';
+      } else { note.style.display = 'none'; }
+
+      // Surface status / error text.
+      const text = s.status || s.output || s.error || '';
+      if (text) { output.style.display = 'block'; output.textContent = text; }
+    }
+
+    async function refresh(showSpinner) {
+      if (showSpinner) flash('Refreshing status… ', 'info');
+      try {
+        const s = await DA.apiGet('/api/status');
+        renderStatus(s);
+        if (showSpinner) clearFlash();
+      } catch (err) {
+        flash('Could not get status: ' + err.message, 'err');
+      }
+    }
+
+    function setBusy(state) {
+      busy = state;
+      document.querySelectorAll('#actionButtons button').forEach((b) => { b.disabled = state; });
+    }
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    function runningBanner(action) {
+      banner.className = 'banner show info';
+      banner.innerHTML = `Running "${DA.escapeHtml(action)}"… this can take a minute. <span class="spinner"></span>`;
+    }
+
+    async function doAction(action) {
+      if (busy) return;
+      setBusy(true);
+      runningBanner(action);
+      try {
+        // Fire-and-forget: server returns 202 immediately, then we poll the job
+        // so no single request stays open long enough to hit a proxy timeout.
+        await DA.apiSend('/api/action/' + action, 'POST');
+        await pollJob(action);
+      } catch (err) {
+        // 409 = an action is already running; fall through to polling it.
+        if (/already running/i.test(err.message)) {
+          await pollJob(action);
+        } else {
+          flash(`"${action}" failed: ${err.message}`, 'err');
+        }
+      } finally {
+        setBusy(false);
+        await refresh(false);
+      }
+    }
+
+    async function pollJob(action) {
+      const deadline = Date.now() + 6 * 60 * 1000; // safety cap ~6 min
+      while (Date.now() < deadline) {
+        await sleep(2500);
+        let data;
+        try { data = await DA.apiGet('/api/job'); }
+        catch (err) { continue; } // transient; keep polling
+        const job = data.job;
+        if (!job || job.state === 'running') { runningBanner(job ? job.action : action); continue; }
+        // Finished.
+        if (job.ok) flash(`"${job.action}" completed.`, 'good');
+        else flash(`"${job.action}" did not complete: ${job.error || 'unknown error'}`, 'err');
+        if (job.output || job.error) { output.style.display = 'block'; output.textContent = job.output || job.error; }
+        return;
+      }
+      flash(`"${action}" is taking longer than expected — check status below.`, 'err');
+    }
+
+    (async function init() {
+      const info = await DA.me();
+      document.getElementById('topbar').innerHTML = DA.renderTopbar(info.user);
+      DA.wireTopbar();
+      document.querySelectorAll('#actionButtons button[data-action]').forEach((b) => {
+        b.addEventListener('click', () => doAction(b.dataset.action));
+      });
+      document.getElementById('refreshBtn').addEventListener('click', () => refresh(true));
+      await refresh(false);
+      // Light auto-refresh so state stays current while the page is open.
+      setInterval(() => { if (!busy) refresh(false); }, 20000);
+    })();
+  </script>
+</body>
+</html>

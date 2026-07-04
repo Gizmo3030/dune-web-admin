@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in — Dune Awakening Admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="login-shell">
+    <div class="card login-card">
+      <div class="brand" style="margin-bottom: 6px;"><span class="dot"></span> Dune Awakening</div>
+      <h1>Server Admin</h1>
+      <p class="sub" id="subtitle">Sign in to manage the battlegroup.</p>
+
+      <div class="banner err" id="banner"></div>
+
+      <form id="loginForm">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" autofocus required />
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required />
+        <button type="submit" class="primary full" id="submitBtn">Sign in</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const banner = document.getElementById('banner');
+    function showError(msg) { banner.textContent = msg; banner.classList.add('show'); }
+
+    // If already logged in, go to the dashboard. Also detect first-run.
+    fetch('/api/me').then(r => r.json()).then(d => {
+      if (d.authenticated) { window.location.href = '/dashboard.html'; return; }
+      if (d.needsSetup) {
+        document.getElementById('subtitle').textContent =
+          'No accounts exist yet. Create the first admin on the host with:  npm run create-admin';
+      }
+    }).catch(() => {});
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      banner.classList.remove('show');
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) { showError(data.error || 'Login failed.'); btn.disabled = false; return; }
+        window.location.href = '/dashboard.html';
+      } catch (err) {
+        showError('Could not reach the server.');
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

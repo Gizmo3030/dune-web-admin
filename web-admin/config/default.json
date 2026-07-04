@@ -1,0 +1,18 @@
+{
+  "port": 8477,
+  "host": "127.0.0.1",
+  "trustProxy": 1,
+  "cookieSecure": true,
+  "behindHttpsProxy": false,
+  "publicOrigin": "https://admin.example.com",
+  "vmName": "dune-awakening",
+  "sessionCookieName": "dune_admin_sid",
+  "sessionMaxAgeMinutes": 480,
+  "actionTimeoutSeconds": 240,
+  "statusTimeoutSeconds": 45,
+  "loginRateLimit": {
+    "windowMinutes": 15,
+    "maxAttempts": 10
+  }
+}
+

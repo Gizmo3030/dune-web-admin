@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Accounts — Dune Awakening Admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="topbar" id="topbar"></div>
+
+  <div class="wrap">
+    <div class="banner" id="banner"></div>
+
+    <div class="card">
+      <h1>Accounts</h1>
+      <p class="sub">Create accounts to hand out. <strong>Operators</strong> can start/stop/reset and view status. <strong>Admins</strong> can also manage accounts.</p>
+
+      <form id="createForm">
+        <div class="form-inline">
+          <div>
+            <label for="newUser">Username</label>
+            <input type="text" id="newUser" autocomplete="off" placeholder="3-32 chars" required />
+          </div>
+          <div>
+            <label for="newPass">Password</label>
+            <input type="password" id="newPass" autocomplete="new-password" placeholder="min 8 chars" required />
+          </div>
+          <div>
+            <label for="newRole">Role</label>
+            <select id="newRole">
+              <option value="operator">Operator</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div>
+            <button type="submit" class="primary">Add account</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Existing accounts</h2>
+      <table>
+        <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody id="userRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    const banner = document.getElementById('banner');
+    function flash(msg, kind) { banner.className = 'banner show ' + (kind || 'info'); banner.textContent = msg; }
+
+    function fmtDate(iso) { try { return new Date(iso).toLocaleString(); } catch { return iso || '—'; } }
+
+    async function loadUsers() {
+      const data = await DA.apiGet('/api/users');
+      const me = DA.user.username.toLowerCase();
+      const rows = data.users.map((u) => {
+        const isSelf = u.username.toLowerCase() === me;
+        return `<tr>
+          <td>${DA.escapeHtml(u.username)}${isSelf ? ' <span class="muted">(you)</span>' : ''}</td>
+          <td>${DA.escapeHtml(u.role)}</td>
+          <td class="muted">${fmtDate(u.createdAt)}</td>
+          <td><div class="row-actions">
+            <button data-act="pw" data-user="${DA.escapeHtml(u.username)}">Reset password</button>
+            <button data-act="role" data-user="${DA.escapeHtml(u.username)}" data-role="${u.role}">${u.role === 'admin' ? 'Make operator' : 'Make admin'}</button>
+            <button class="danger" data-act="del" data-user="${DA.escapeHtml(u.username)}">Delete</button>
+          </div></td>
+        </tr>`;
+      });
+      document.getElementById('userRows').innerHTML = rows.join('') ||
+        '<tr><td colspan="4" class="muted">No accounts.</td></tr>';
+    }
+
+    document.getElementById('createForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await DA.apiSend('/api/users', 'POST', {
+          username: document.getElementById('newUser').value.trim(),
+          password: document.getElementById('newPass').value,
+          role: document.getElementById('newRole').value,
+        });
+        flash('Account created.', 'good');
+        document.getElementById('createForm').reset();
+        await loadUsers();
+      } catch (err) { flash(err.message, 'err'); }
+    });
+
+    document.getElementById('userRows').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const user = btn.dataset.user;
+      try {
+        if (btn.dataset.act === 'del') {
+          if (!confirm(`Delete account "${user}"?`)) return;
+          await DA.apiSend('/api/users/' + encodeURIComponent(user), 'DELETE');
+          flash(`Deleted "${user}".`, 'good');
+        } else if (btn.dataset.act === 'pw') {
+          const pw = prompt(`New password for "${user}" (min 8 chars):`);
+          if (!pw) return;
+          await DA.apiSend('/api/users/' + encodeURIComponent(user) + '/password', 'POST', { password: pw });
+          flash(`Password reset for "${user}".`, 'good');
+        } else if (btn.dataset.act === 'role') {
+          const next = btn.dataset.role === 'admin' ? 'operator' : 'admin';
+          await DA.apiSend('/api/users/' + encodeURIComponent(user) + '/role', 'POST', { role: next });
+          flash(`"${user}" is now ${next}.`, 'good');
+        }
+        await loadUsers();
+      } catch (err) { flash(err.message, 'err'); }
+    });
+
+    (async function init() {
+      const info = await DA.me();
+      if (info.user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+      document.getElementById('topbar').innerHTML = DA.renderTopbar(info.user);
+      DA.wireTopbar();
+      await loadUsers();
+    })();
+  </script>
+</body>
+</html>
